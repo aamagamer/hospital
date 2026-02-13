@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hospital - Diagnóstico Machine Learning</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- TensorFlow.js + Teachable Machine (Image) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+    <style>
+        body {
+            background: #0b1220;
+            color: #e7eefc;
+        }
+
+        .app-card {
+            background: rgba(255, 255, 255, .06);
+            border: 1px solid rgba(255, 255, 255, .10);
+            border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+        }
+
+        .brand-badge {
+            display: inline-flex;
+            gap: .6rem;
+            align-items: center;
+            padding: .35rem .75rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid rgba(255, 255, 255, .12);
+            font-weight: 600;
+        }
+
+        .big-btn {
+            padding: 1.6rem 1.2rem;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, .12);
+            background: rgba(255, 255, 255, .08);
+            color: #e7eefc;
+            transition: transform .12s ease, background .12s ease;
+            text-align: left;
+            width: 100%;
+        }
+
+        .big-btn:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, .11);
+        }
+
+        .muted {
+            color: rgba(231, 238, 252, .75);
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: .25rem .6rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .10);
+            border: 1px solid rgba(255, 255, 255, .12);
+        }
+
+        #previewImg {
+            max-width: 100%;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, .12);
+        }
+
+        .status-dot {
+            width: .6rem;
+            height: .6rem;
+            border-radius: 999px;
+            display: inline-block;
+            margin-right: .4rem;
+        }
+
+        .dot-ok {
+            background: #35d07f;
+        }
+
+        .dot-warn {
+            background: #f7c948;
+        }
+
+        .dot-bad {
+            background: #ff6b6b;
+        }
+
+        .small-note {
+            font-size: .92rem;
+            color: rgba(231, 238, 252, .75);
+        }
+
+        a {
+            color: #9dd1ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-4 py-md-5">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="brand-badge">
+                <span style="font-size:1.1rem;">🏥</span>
+                <span>Hospital • Diagnóstico ML</span>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <span id="whoami" class="small-note"></span>
+                <button id="btnLogout" class="btn btn-sm btn-outline-light d-none">Salir</button>
+            </div>
+        </div>
+
+        <!-- LOGIN VIEW -->
+        <section id="viewLogin" class="app-card p-4 p-md-5">
+            <div class="row g-4 align-items-center">
+                <div class="col-12 col-lg-6">
+                    <h1 class="h3 mb-2">Acceso al sistema</h1>
+                    <p class="muted mb-0">
+                        Inicia sesión para acceder a los módulos: <strong>Fracturas</strong>,
+                        <strong>Cardiología</strong> y <strong>RX Tórax</strong>.
+                    </p>
+                    <hr class="border-light opacity-25 my-4">
+                    <div class="small-note">
+                        <div class="mb-1"><span class="mono">Hospital</span> Médico <span class="mono">AAMA</span></div>
+                    </div>
+                </div>
+                <div class="col-12 col-lg-6">
+                    <form id="loginForm" class="app-card p-4">
+                        <div class="mb-3">
+                            <label class="form-label">Usuario</label>
+                            <input id="loginUser" class="form-control" placeholder="Ej. admin" autocomplete="username"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input id="loginPass" type="password" class="form-control" placeholder="••••••••"
+                                autocomplete="current-password" required>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-lg" type="submit">Entrar</button>
+                            <div id="loginMsg" class="small-note"></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- DASHBOARD VIEW -->
+        <section id="viewDashboard" class="d-none">
+            <div class="app-card p-4 p-md-5">
+                <h2 class="h4 mb-2">Selecciona un módulo</h2>
+                <p class="muted mb-4">Elige el modelo que deseas usar.</p>
+
+                <div class="row g-3">
+                    <div class="col-12 col-lg-4">
+                        <button class="big-btn" data-module="fracturas">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="h5 mb-1">🦴 Fracturas</div>
+                                    <div class="muted">Detecta: fracturado / no fracturado</div>
+                                </div>
+                                <span class="pill">Imagen</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="col-12 col-lg-4">
+                        <button class="big-btn" data-module="cardiologia">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>~
+                                    <div class="h5 mb-1">❤️ Cardiología</div>
+                                    <div class="muted">Detecta: Abnormal heartbeat ECG, Miocardial infarction, Normal
+                                        ECG, PMI</div>
+                                </div>
+                                <span class="pill">Imagen</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div class="col-12 col-lg-4">
+                        <button class="big-btn" data-module="rx_torax">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="h5 mb-1">🫁 RX Tórax</div>
+                                    <div class="muted">Detecta: Neumonía Bacteriana, Covid-19, Sano, Neumonía viral
+                                    </div>
+                                </div>
+                                <span class="pill">Imagen</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <hr class="border-light opacity-25 my-4">
+                <div class="small-note">
+                    <strong>Nota:</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- MODULE VIEW -->
+        <section id="viewModule" class="d-none">
+            <div class="app-card p-4 p-md-5">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                    <div>
+                        <h2 id="moduleTitle" class="h4 mb-1">Módulo</h2>
+                        <div id="moduleDesc" class="muted"></div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button id="btnBack" class="btn btn-outline-light">← Volver</button>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-12 col-lg-6">
+                        <div class="app-card p-3 p-md-4 h-100">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="fw-semibold">1) Cargar imagen</div>
+                                <span id="modelStatus" class="small-note">
+                                    <span class="status-dot dot-warn"></span>Modelo: sin cargar
+                                </span>
+                            </div>
+
+                            <input id="fileInput" type="file" accept="image/*" class="form-control mb-3">
+
+                            <img id="previewImg" alt="Vista previa" class="d-none" />
+
+                            <div class="d-grid gap-2 mt-3">
+                                <button id="btnPredictFile" class="btn btn-primary" disabled>Predecir con
+                                    imagen</button>
+                                <button id="btnClear" class="btn btn-outline-light" disabled>Limpiar</button>
+                            </div>
+
+                            <div class="small-note mt-3">
+                                Tip: usa fotos claras y centradas. La IA solo da una <em>predicción</em>, no un
+                                diagnóstico médico real.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+                        <div class="app-card p-3 p-md-4 h-100">
+                            <div class="fw-semibold mb-2">2) Cámara (opcional)</div>
+
+                            <div class="d-grid gap-2 mb-3">
+                                <button id="btnStartCam" class="btn btn-outline-light" disabled>Iniciar cámara</button>
+                                <button id="btnStopCam" class="btn btn-outline-light" disabled>Detener cámara</button>
+                                <button id="btnPredictCam" class="btn btn-primary" disabled>Predecir con cámara</button>
+                            </div>
+
+                            <div id="camWrap" class="d-none"></div>
+
+                            <div class="small-note mt-3">
+                                Si tu navegador bloquea la cámara, revisa permisos o usa <span
+                                    class="mono">localhost</span>.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-light opacity-25 my-4">
+
+                <div class="row g-4">
+                    <div class="col-12 col-lg-6">
+                        <div class="app-card p-3 p-md-4">
+                            <div class="fw-semibold mb-2">Resultado</div>
+                            <div id="resultTop" class="h5 mb-1">—</div>
+                            <div id="resultConf" class="muted">Confianza: —</div>
+                            <div id="resultRec" class="mt-3">Recomendación: —</div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-lg-6">
+                        <div class="app-card p-3 p-md-4">
+                            <div class="fw-semibold mb-2">Detalle de predicciones</div>
+                            <div id="predList" class="small-note">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-light opacity-25 my-4">
+                <div class="small-note">
+                    ⚠️ <strong>Atención:</strong> Este sistema es una sugerencia. No sustituye evaluación
+                    médica profesional.
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        /** =========================
+         *  CONFIG DE MÓDULOS
+         *  ========================= */
+        const MODULES = {
+            fracturas: {
+                key: "fracturas",
+                title: "🦴 Fracturas",
+                desc: "Detecta: Fracturado / No fracturado",
+                modelURL: "./models/fracturas/model.json",
+                metadataURL: "./models/fracturas/metadata.json",
+
+                recommendations: {
+                    "Fracturado": "Posible fractura detectada. Recomendación: inmovilizar la zona, evitar movimiento y acudir a valoración médica (urgencias si hay dolor intenso o deformidad visible).",
+                    "No fracturado": "No se detecta fractura. Si hay dolor persistente, inflamación o limitación de movimiento, recomendar evaluación médica."
+                },
+
+                fallbackRecommendation:
+                    "Recomendar valoración médica si existe dolor intenso, inflamación, hematoma o pérdida de movilidad."
+            },
+            cardiologia: {
+                key: "cardiologia",
+                title: "❤️ Cardiología",
+                desc: "Detecta: Abnormal heartbeat ECG, Miocardial infarction, Normal ECG, PMI",
+                modelURL: "./models/cardiologia/model.json",
+                metadataURL: "./models/cardiologia/metadata.json",
+
+                recommendations: {
+                    // OJO: esta etiqueta trae un espacio al final según tu metadata.json
+                    "Abnormal heartbeat ECG ": "Ritmo anormal detectado. Recomendar valoración con cardiología y monitoreo de síntomas (dolor, mareo, falta de aire).",
+                    // Por si en algún punto lo normalizas y se quita el espacio:
+                    "Abnormal heartbeat ECG": "Ritmo anormal detectado. Recomendar valoración con cardiología y monitoreo de síntomas (dolor, mareo, falta de aire).",
+
+                    "Normal ECG": "ECG aparentemente normal. Si hay síntomas (dolor torácico, falta de aire, desmayo), recomendar consulta médica.",
+                    "Miocardial infarction": "Posible infarto. Recomendación: atención médica URGENTE (servicio de urgencias).",
+                    "PMI": "Posible PMI. Recomendación: valoración médica prioritaria (urgencias si hay síntomas)."
+                },
+
+                fallbackRecommendation:
+                    "Recomendar evaluación médica, especialmente si hay dolor torácico, falta de aire, palpitaciones fuertes o desmayo."
+            },
+            rx_torax: {
+  key: "rx_torax",
+  title: "🫁 RX Tórax",
+  desc: "Detecta: Neumonia Bacteriana, Covid 19, Sano, Neumonia viral",
+  modelURL: "./models/rx_torax/model.json",
+  metadataURL: "./models/rx_torax/metadata.json",
+
+  recommendations: {
+    "Sano": "No se detectan hallazgos relevantes. Si el paciente presenta síntomas respiratorios, recomendar evaluación médica.",
+    
+    "Covid 19": "Posible Covid-19 detectado. Recomendación: valoración médica, aislamiento según indicaciones y monitoreo de saturación de oxígeno.",
+    
+    "Neumonia Bacteriana": "Posible neumonía bacteriana. Recomendación: valoración médica pronta, posible tratamiento antibiótico según criterio clínico.",
+    
+    "Neumonia viral": "Posible neumonía viral. Recomendación: valoración médica y monitoreo de síntomas respiratorios."
+  },
+
+  fallbackRecommendation:
+    "Recomendar evaluación clínica y estudios complementarios según síntomas."
+}
+
+        };
+
+        // Login demo
+        const DEMO_USER = "admin";
+        const DEMO_PASS = "admin123";
+
+        /** =========================
+         *  STATE
+         *  ========================= */
+        let currentModule = null;
+        let model = null;
+        let maxPredictions = 0;
+        let webcam = null; // tmImage.Webcam
+        let camActive = false;
+
+        /** =========================
+         *  ELEMENTS
+         *  ========================= */
+        const viewLogin = document.getElementById("viewLogin");
+        const viewDashboard = document.getElementById("viewDashboard");
+        const viewModule = document.getElementById("viewModule");
+
+        const whoami = document.getElementById("whoami");
+        const btnLogout = document.getElementById("btnLogout");
+
+        const loginForm = document.getElementById("loginForm");
+        const loginUser = document.getElementById("loginUser");
+        const loginPass = document.getElementById("loginPass");
+        const loginMsg = document.getElementById("loginMsg");
+
+        const moduleTitle = document.getElementById("moduleTitle");
+        const moduleDesc = document.getElementById("moduleDesc");
+        const modelStatus = document.getElementById("modelStatus");
+
+        const fileInput = document.getElementById("fileInput");
+        const previewImg = document.getElementById("previewImg");
+        const btnPredictFile = document.getElementById("btnPredictFile");
+        const btnClear = document.getElementById("btnClear");
+
+        const btnBack = document.getElementById("btnBack");
+        const btnStartCam = document.getElementById("btnStartCam");
+        const btnStopCam = document.getElementById("btnStopCam");
+        const btnPredictCam = document.getElementById("btnPredictCam");
+        const camWrap = document.getElementById("camWrap");
+
+        const resultTop = document.getElementById("resultTop");
+        const resultConf = document.getElementById("resultConf");
+        const resultRec = document.getElementById("resultRec");
+        const predList = document.getElementById("predList");
+
+        /** =========================
+         *  HELPERS
+         *  ========================= */
+        function isLoggedIn() {
+            return localStorage.getItem("hospital_logged_in") === "1";
+        }
+
+        function setLoggedIn(username) {
+            localStorage.setItem("hospital_logged_in", "1");
+            localStorage.setItem("hospital_user", username);
+        }
+
+        function logout() {
+            localStorage.removeItem("hospital_logged_in");
+            localStorage.removeItem("hospital_user");
+            stopCameraSafe();
+            model = null;
+            currentModule = null;
+            showLogin();
+        }
+
+        function showLogin() {
+            viewLogin.classList.remove("d-none");
+            viewDashboard.classList.add("d-none");
+            viewModule.classList.add("d-none");
+            btnLogout.classList.add("d-none");
+            whoami.textContent = "";
+        }
+
+        function showDashboard() {
+            viewLogin.classList.add("d-none");
+            viewDashboard.classList.remove("d-none");
+            viewModule.classList.add("d-none");
+            btnLogout.classList.remove("d-none");
+            whoami.textContent = "Sesión: " + (localStorage.getItem("hospital_user") || "usuario");
+        }
+
+        function showModuleView() {
+            viewLogin.classList.add("d-none");
+            viewDashboard.classList.add("d-none");
+            viewModule.classList.remove("d-none");
+            btnLogout.classList.remove("d-none");
+            whoami.textContent = "Sesión: " + (localStorage.getItem("hospital_user") || "usuario");
+        }
+
+        function setModelStatus(state, text) {
+            const dotClass = state === "ok" ? "dot-ok" : state === "bad" ? "dot-bad" : "dot-warn";
+            modelStatus.innerHTML = `<span class="status-dot ${dotClass}"></span>${text}`;
+        }
+
+        function resetResults() {
+            resultTop.textContent = "—";
+            resultConf.textContent = "Confianza: —";
+            resultRec.textContent = "Recomendación: —";
+            predList.textContent = "—";
+        }
+
+        function formatPct(x) {
+            const pct = (x * 100);
+            return pct.toFixed(1) + "%";
+        }
+
+        function normalizeLabel(label) {
+            // Para que "fracturado" y "Fracturado" no te rompan recomendaciones
+            return (label || "").trim();
+        }
+
+        function getRecommendationFor(label) {
+            const mod = MODULES[currentModule.key];
+            const exact = mod.recommendations[normalizeLabel(label)];
+            if (exact) return exact;
+
+            // Intento "case-insensitive" básico
+            const lower = normalizeLabel(label).toLowerCase();
+            for (const k of Object.keys(mod.recommendations)) {
+                if (k.toLowerCase() === lower) return mod.recommendations[k];
+            }
+            return mod.fallbackRecommendation;
+        }
+
+        /** =========================
+         *  MODEL LOADING
+         *  ========================= */
+        async function loadModel(moduleKey) {
+            currentModule = MODULES[moduleKey];
+            moduleTitle.textContent = currentModule.title;
+            moduleDesc.textContent = currentModule.desc;
+
+            // UI reset
+            resetResults();
+            previewImg.classList.add("d-none");
+            previewImg.src = "";
+            fileInput.value = "";
+            btnPredictFile.disabled = true;
+            btnClear.disabled = true;
+
+            btnStartCam.disabled = true;
+            btnStopCam.disabled = true;
+            btnPredictCam.disabled = true;
+            camWrap.classList.add("d-none");
+            camWrap.innerHTML = "";
+            await stopCameraSafe();
+
+            showModuleView();
+            setModelStatus("warn", "Modelo: cargando...");
+
+            try {
+                model = await tmImage.load(currentModule.modelURL, currentModule.metadataURL);
+                maxPredictions = model.getTotalClasses();
+
+                setModelStatus("ok", `Modelo: listo (${maxPredictions} clases)`);
+                btnPredictFile.disabled = false;
+                btnClear.disabled = false;
+
+                // Cámara disponible
+                btnStartCam.disabled = false;
+                btnPredictCam.disabled = true;
+                btnStopCam.disabled = true;
+
+            } catch (err) {
+                console.error(err);
+                setModelStatus("bad", "Modelo: error al cargar (revisa rutas / archivos)");
+                model = null;
+            }
+        }
+
+        /** =========================
+         *  PREDICT (FILE / IMAGE)
+         *  ========================= */
+        async function predictFromImageElement(imgEl) {
+            if (!model) return;
+
+            const predictions = await model.predict(imgEl, false);
+            // Ordenar por prob desc
+            predictions.sort((a, b) => b.probability - a.probability);
+
+            const top = predictions[0];
+            const topLabel = top.className;
+            const topProb = top.probability;
+
+            resultTop.textContent = topLabel;
+            resultConf.textContent = "Confianza: " + formatPct(topProb);
+            resultRec.textContent = "Recomendación: " + getRecommendationFor(topLabel);
+
+            predList.innerHTML = predictions.map(p => {
+                const bar = Math.round(p.probability * 20); // 0..20
+                return `
+      <div class="mb-2">
+        <div class="d-flex justify-content-between">
+          <span>${p.className}</span>
+          <span class="mono">${formatPct(p.probability)}</span>
+        </div>
+        <div class="progress" style="height:10px;background:rgba(255,255,255,.10)">
+          <div class="progress-bar" role="progressbar" style="width:${p.probability * 100}%"></div>
+        </div>
+      </div>
+    `;
+            }).join("");
+        }
+
+        /** =========================
+         *  CAMERA (tmImage.Webcam)
+         *  ========================= */
+        async function startCamera() {
+            if (!model) return;
+            if (camActive) return;
+
+            try {
+                webcam = new tmImage.Webcam(320, 240, true); // width, height, flip
+                await webcam.setup();
+                await webcam.play();
+                camActive = true;
+
+                camWrap.classList.remove("d-none");
+                camWrap.innerHTML = "";
+                camWrap.appendChild(webcam.canvas);
+
+                btnStartCam.disabled = true;
+                btnStopCam.disabled = false;
+                btnPredictCam.disabled = false;
+
+                // Loop para que el canvas se actualice
+                window.requestAnimationFrame(camLoop);
+            } catch (err) {
+                console.error(err);
+                alert("No se pudo iniciar la cámara. Revisa permisos o usa localhost/https.");
+            }
+        }
+
+        async function camLoop() {
+            if (!camActive || !webcam) return;
+            webcam.update();
+            window.requestAnimationFrame(camLoop);
+        }
+
+        async function stopCameraSafe() {
+            try {
+                if (webcam) {
+                    await webcam.stop();
+                    webcam = null;
+                }
+            } catch (_) { }
+            camActive = false;
+
+            if (camWrap) {
+                camWrap.innerHTML = "";
+                camWrap.classList.add("d-none");
+            }
+
+            if (btnStartCam) btnStartCam.disabled = !model;
+            if (btnStopCam) btnStopCam.disabled = true;
+            if (btnPredictCam) btnPredictCam.disabled = true;
+        }
+
+        async function predictFromCamera() {
+            if (!model || !webcam || !camActive) return;
+            await predictFromImageElement(webcam.canvas);
+        }
+
+        /** =========================
+         *  EVENTS
+         *  ========================= */
+        loginForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            loginMsg.textContent = "";
+
+            const u = loginUser.value.trim();
+            const p = loginPass.value;
+
+            if (u === DEMO_USER && p === DEMO_PASS) {
+                setLoggedIn(u);
+                showDashboard();
+            } else {
+                loginMsg.textContent = "Usuario o contraseña incorrectos.";
+            }
+        });
+
+        btnLogout.addEventListener("click", logout);
+
+        document.querySelectorAll("[data-module]").forEach(btn => {
+            btn.addEventListener("click", async () => {
+                const key = btn.getAttribute("data-module");
+                await loadModel(key);
+            });
+        });
+
+        btnBack.addEventListener("click", async () => {
+            resetResults();
+            await stopCameraSafe();
+            showDashboard();
+        });
+
+        fileInput.addEventListener("change", () => {
+            resetResults();
+            const file = fileInput.files?.[0];
+            if (!file) return;
+
+            const url = URL.createObjectURL(file);
+            previewImg.src = url;
+            previewImg.onload = () => URL.revokeObjectURL(url);
+
+            previewImg.classList.remove("d-none");
+        });
+
+        btnPredictFile.addEventListener("click", async () => {
+            if (previewImg.classList.contains("d-none") || !previewImg.src) {
+                alert("Primero carga una imagen.");
+                return;
+            }
+            await predictFromImageElement(previewImg);
+        });
+
+        btnClear.addEventListener("click", async () => {
+            resetResults();
+            fileInput.value = "";
+            previewImg.src = "";
+            previewImg.classList.add("d-none");
+        });
+
+        btnStartCam.addEventListener("click", startCamera);
+        btnStopCam.addEventListener("click", stopCameraSafe);
+        btnPredictCam.addEventListener("click", predictFromCamera);
+
+        /** =========================
+         *  INIT
+         *  ========================= */
+        (function init() {
+            if (isLoggedIn()) showDashboard();
+            else showLogin();
+        })();
+    </script>
+</body>
+
+</html>
